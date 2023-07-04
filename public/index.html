@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Agent Demo</title>
+    
+    <style>
+      #MainView {
+        display: block;
+      }
+      #FlowView {
+        display: none;
+      }
+    </style>
+
+    <!-- Compiled and minified CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+
+    <!-- Compiled and minified JavaScript -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+            
+</head>
+<body>
+  <nav class="blue-grey darken-4" role="navigation">
+    <div class="nav-wrapper container"><a id="logo-container" href="#" class="brand-logo">Presonal Agent</a>
+      <!-- <ul class="right hide-on-med-and-down">
+        <li><a href="#">Navbar Link</a></li>
+      </ul>
+
+      <ul id="nav-mobile" class="sidenav">
+        <li><a href="#">Navbar Link</a></li>
+      </ul>
+    -->
+      <a href="#" data-target="nav-mobile" class="sidenav-trigger"><i class="material-icons">menu</i></a>
+    </div>
+  </nav>
+
+  <div class="section no-pad-bot" id="index-banner">
+    <div class="container">
+      <div id="MainView"> 
+        <input type="text" id="agent" name="agent" placeholder="Agent Goal..." value="Build a list of the 5 most fancy restaurant in every city with more that 1 million habitant in the USA">
+        <button id="btn" class="btn-large waves-effect waves-light" onclick="start()">Start</button>
+      </div>
+    
+      <div id="FlowView"> 
+        <ul id="flowContent" class="collection">
+    
+        </ul>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // get content after hashbang
+    var hash = window.location.hash.substr(1);
+    let agentID  = null;
+
+    if (hash.length) {
+      renderFlow(hash);
+    }
+    
+    async function start() {
+      MainView.style.display = 'none';
+
+      let agent = document.getElementById('agent').value;
+      
+      // FETCH POST '/api/agent'
+      let res = await fetch('/api/agent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({goal: agent})
+      });
+
+      let data = await res.json();
+      renderFlow(data.agentID);
+    }
+
+
+    async function renderFlow(id) {
+      if (id) {
+        agentID = id;
+      }
+      MainView.style.display = 'none';
+      FlowView.style.display = 'block';
+      
+      let res = await fetch(`/trace/log-${agentID}.json`);
+      let data = await res.json();
+
+      let flowContent = document.getElementById('flowContent');
+      flowContent.innerHTML = '';
+
+      for (let item of data) {
+        let div = document.createElement('li');
+        div.className = 'collection-item';
+
+        div.innerHTML = `
+          <div class='actionType'>${item.type}</div>
+        `
+
+        if (item.type === 'NEW_TASK') {
+          div.innerHTML += `
+            <div class='goal'>${item.goal}</div>
+          `
+        }
+        else if (item.type === 'REASONING') {
+          div.innerHTML += `
+            <pre class='reasoning'>${item.answer.replace(/::/g, "Do ")}</pre>
+          `
+        }
+        else if (item.type === 'SEARCH') {
+          div.innerHTML += `
+            <pre class='query'>${item.query}</pre>
+            <pre class='result'>${item.result}</pre>
+          `
+        }
+        else if (item.type === 'GET_PAGE') {
+          div.innerHTML += `
+            <pre class='url'>${item.query}</pre>
+            <div class='result'>${item.result}</div>
+          `
+        }
+        else {
+          div.innerHTML += `
+            <div class='JSON'><pre>${JSON.stringify(item, null, 2)}</pre></div>
+          `
+        }
+        
+        flowContent.appendChild(div);
+      }
+      setTimeout(renderFlow, 1000);
+    }
+  </script>
+
+  <!--JavaScript at end of body for optimized loading-->
+  <script type="text/javascript" src="js/materialize.min.js"></script>
+
+
+</body>
+
+</html>
