@@ -241,15 +241,12 @@ const browse = {
           else if (node.type == 'tag' && node.name == 'a') { 
             if (node.attribs['href']) {
               var href = node.attribs['href'];
-              console.log('HREF', href);
+             // console.log('HREF', href);
               if (href.indexOf('://') === -1 && href.indexOf('//') === -1) {
                 href = this.domain + '/' + href;
-                console.log('HREFCORRECTED', href);
+           //     console.log('HREFCORRECTED', href);
               }
-              text += '<a class="link" onclick="Navigate(\'' + href + '\')">' + childText + '</a>';
-            }
-            else if (node.attribs['name']) {
-              text += '<a name="' + node.attribs['name'] + '">' + childText + '</a>';
+              text += `<a href="${href}">${childText}</a>`;
             }
             else {
               text += childText;
@@ -273,18 +270,8 @@ const browse = {
         
           var url = node.attribs.src;
     
-          //console.log('img', url);
-          if (url) {
-            if (url.indexOf('://') != -1 || url.indexOf('//') === 0 || url.indexOf('data:') === 0) {
-              if (url.indexOf('//') === 0) {
-                url = 'http:' + url;
-              }
-              text += '<img src="'+  url + '"/>\n';
-            } 
-            else {
-              text += '<img src="http://'+ this.domain   + url + '"/>\n';
-            }
-          }
+          text += '<img />';
+        
         }
     
         return text;
@@ -416,6 +403,6 @@ ${data.text}`;
 
 module.exports = {
   do: browse.do,
-  instruction : "::GET_PAGE <url>  get the content of a given url",
+  instruction : "GET_PAGE <url>  get the content of a given url",
   keyword: "GET_PAGE"
 }

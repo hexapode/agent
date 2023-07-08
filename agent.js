@@ -8,6 +8,7 @@ const search = require('./tools/googleSearch');
 search.configure(process.env.GOOLE_API_KEY, "3359060177f7e45c6");
 
 const browse = require('./tools/browse');
+const { AsyncResource } = require('async_hooks');
 
 
 const configuration = new Configuration({
@@ -17,11 +18,12 @@ const openai = new OpenAIApi(configuration);
 
 const logStack = [];
 async function logIt(data, id) { 
+  if (!id) {
+    debugger;
+  }
   logStack.push(data);
   fs.writeFileSync(`${__dirname}/public/trace/log-${id}.json`, JSON.stringify(logStack, null, 2));
 }
-
-let tools = [search, browse]
 
 
 let ID = 0
@@ -34,23 +36,64 @@ let MESSAGES = {
   
 }
 
-async function agent(goal, agentID) {
+
+
+let retrieveFromUrl = {
+  instruction : "EXTRACT_DATA_FROM_URL <url> <description of the data to be extract> <output data format> retrieve information from a url and return it in the specified format. Be specific in what kind of information you want to extract and what it is. add some context",
+  keyword: "EXTRACT_DATA_FROM_URL",
+  do: async (args,  agentId, taskId) => {
+
+    args = args.replace(/\"/g, '');
+    let url = args.split(' ')[0];
+    let format = args.split(' ')[args.length - 1];
+    let instruct = args.split(' ').slice(1, args.length - 1).join(' ');
+
+    const res = await agent(`Get content from the url : ${url}, then extract the following information: ${instruct}. Return it in ${format}` , agentId, taskId, [...mainTools, browse]);
+    logIt({ 
+      type: "EXTRACT_DATA_FROM_URL",
+      taskId: taskId,
+      url: args,
+      result: res
+    }, agentId);
+   return res;
+  }
+}
+
+let mainTools = [search]
+
+let defaultTools = [search, retrieveFromUrl]
+
+async function agent(goal, agentId, parentTaskId=null, tools=defaultTools) {
   let taskId = ++ID;
   console.log(`New Task (#${taskId}): ${goal}`);
 
   await logIt({
     type: "NEW_TASK",
     taskId : taskId,
-    goal : goal
-  }, agentID);
+    goal : goal,
+    parentTaskId: parentTaskId
+  }, agentId);
 
-  return think(taskId, goal, agentID);
+  return think(taskId, goal, agentId, tools, parentTaskId);
 
 }
 
+async function agentContinue(answer, agentId, taskId) {
 
+  console.log(`NEW INFORMATION (#${taskId}): ${answer}`);
 
-async function think(taskId, goal, agentID) {
+  await logIt({
+    type: "INFORMATION",
+    taskId : taskId,
+    answer : answer
+  }, agentId);
+
+  return think(taskId, answer, agentId, mainTools);
+
+}
+
+async function think(taskId, goal, agentId, tools=defaultTools, parrentId=null) {
+  console.log(`Starting agent with tools ${tools.map(t => t.keyword).join(', ')}`);
   let systemPrompt = `The user will give you a task.
 To achieve this goal you can do the following actions by outputing instructions as new lines:`
 
@@ -60,13 +103,14 @@ for (let tool of tools) {
 
 systemPrompt += 
 `
-::PLAN <task> Plan to do a task in the future
-::ASK <task>  ask yourself to do a subtask and get the return value. The task should be a string with all information necessary to complete it, do not include references to context explicit it.
-::END_RESULT <result>  output the result of the task once it is successfully completed
-::ASK_CLARIFICATION <question> ask for context if the task is not clear or missing some context
-::CLARIFY <taskId> <answer> provide some context to a clarification request
-::STORE <key> <value> store a value in memory
-::RETRIEVE <key> retrieve a value from memory
+PLAN <task> Plan to do a task in the future
+ASK <task>  ask yourself to do a subtask and get the return value. The task should be a string with all information necessary to complete it, do not include references to context explicit it.
+END_RESULT <result>  output the result of the task once it is successfully completed. result should be an output of the result of the task
+ASK_CLARIFICATION <question> ask for context if the task is not clear or missing some context
+CLARIFY <taskId> <answer> provide some context to a clarification request
+STORE <key> <value> store a value in memory
+RETRIEVE <key> retrieve a value from memory
+
 
 Parameter do not need to be quoted, even if they contain spaces. parameters do not support new lines
 Instuction should be at the start of a line.
@@ -87,7 +131,8 @@ You have limited attention, try to create subtask to do the task and do them one
 You have limited memory, try to store information in memory to use it later, or to retrieve by other instead of communicating it directly.
 
 If the task is too big, use ASK to split it in subtask and do them one by one.
-If you think the task miss context information, you can output ::ASK_CLARIFICATION missing context to do task <details> and the user will give you more information.`;
+If you think the task miss context information, you can output ASK_CLARIFICATION missing context to do task <details> and the user will give you more information.`;
+
 
   // we backup the prompt
   if (!MESSAGES[taskId]) {
@@ -99,7 +144,6 @@ If you think the task miss context information, you can output ::ASK_CLARIFICATI
   let stack = MESSAGES[taskId];
 
   while (true) {
-    console.log("GPT 4:", JSON.stringify(stack, null, 2));
 
     let answer = await(prompt([{"role": "system", "content": systemPrompt}, ...stack]));
     
@@ -108,13 +152,12 @@ If you think the task miss context information, you can output ::ASK_CLARIFICATI
       type: "REASONING",
       taskId: taskId,
       answer: answer
-    }, agentID);
+    }, agentId);
     console.log("Reasoning:", answer);
     // parse instructions!
     const lines = answer.split('\n');
     for (let line of lines) {
-      if (line.startsWith('::')) {
-        const instruction = line.split(' ')[0].substring(2);
+        const instruction = line.split(' ')[0];
         let args = line.split(' ').slice(1).join(' ');
         if (args[0] == '"' && args[args.length - 1] == '"') { 
           args = args.substring(1, args.length - 1);
@@ -123,13 +166,13 @@ If you think the task miss context information, you can output ::ASK_CLARIFICATI
         // handle tools
         for (let tool of tools) { 
           if (instruction === tool.keyword) {
-            const res = await tool.do(args);
+            const res = await tool.do(args, agentId, taskId);
             logIt({ 
               type: tool.keyword,
               taskId: taskId,
               query: args,
               result: res
-            }, agentID);
+            }, agentId);
             stack.push({"role": "user", "content": `Result for ${tool.keyword} with ${args} : ${res}`});
           }
         }
@@ -144,7 +187,7 @@ If you think the task miss context information, you can output ::ASK_CLARIFICATI
             taskId: taskId,
             key: key,
             value: value
-          }, agentID);
+          }, agentId);
           fs.writeFileSync('store.json', JSON.stringify(STORE, null, 2));
         }
         if (instruction === 'RETRIEVE') { 
@@ -156,19 +199,18 @@ If you think the task miss context information, you can output ::ASK_CLARIFICATI
             taskId: taskId,
             key: key,
             value: value
-          }, agentID);
+          }, agentId);
           stack.push({"role": "user", "content": `RETRIEVE result for ${args} : ${value}`});
         }
 
-
         if (instruction === 'ASK') {
-          const res = await agent(args, agentID);
+          const res = await agent(args, agentId, taskId);
           logIt({ 
             type: "ASK",
             taskId: taskId,
             url: args,
             result: res
-          }, agentID);
+          }, agentId);
           if (res.type == 'end') {
             stack.push({"role": "user", "content": `I did ${args}. The results are: ${res}`});
           }
@@ -183,7 +225,7 @@ If you think the task miss context information, you can output ::ASK_CLARIFICATI
             taskId: taskId,
             goal: goal,
             args: args
-          }, agentID);
+          }, agentId);
           console.log(`Task #${taskId} completed successfully (${goal})with results:
   ${args}`);
           return {
@@ -197,7 +239,7 @@ If you think the task miss context information, you can output ::ASK_CLARIFICATI
             type: "ASK_CLARIFICATION",
             taskId: taskId,
             args: args
-          }, agentID);
+          }, agentId);
           console.log(`Task #${taskId} ask clarification:
   ${args}`);
           return {
@@ -211,11 +253,11 @@ If you think the task miss context information, you can output ::ASK_CLARIFICATI
             type: "CLARIFY",
             taskId: taskId,
             args: args
-          }, agentID);
+          }, agentId);
           let asktaskId = args.split(' ')[0];
           let clarification = args.split(' ').slice(1).join(' ');
 
-          const res = await think(asktaskId, clarification, agentID);
+          const res = await think(asktaskId, clarification, agentId);
          
           if (res.type == 'end') {
             stack.push({"role": "user", "content": `I did ${args}. The results are: ${res}`});
@@ -226,7 +268,6 @@ If you think the task miss context information, you can output ::ASK_CLARIFICATI
           
         }
         
-      }
     }
   }
   
@@ -235,21 +276,30 @@ If you think the task miss context information, you can output ::ASK_CLARIFICATI
 
 
 async function prompt(messages) {
+  let r = null;
+  console.log("OPEN AI", messages);
   try {
     const response = await openai.createChatCompletion({
       model: "gpt-3.5-turbo-16k",
-      messages:messages,
-      max_tokens: 2000,
+      messages:messages
     });
+    r = response;
     return response.data.choices[0].message.content;
   }
   catch (e) {
     // sleep 
+
     console.log("OPEN AI JAM, wait 10 sec")
+    if (r) {
+      console.log(r);
+    }
     await new Promise(resolve => setTimeout(resolve, 10000));
     return await prompt(messages);
   }
 }
 
-module.exports = agent;
+module.exports = {
+  start: agent,
+  continue: agentContinue
+}
 

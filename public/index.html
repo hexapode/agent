@@ -11,6 +11,11 @@
       #FlowView {
         display: none;
       }
+
+      .task {
+        padding: 8px;
+        border : 1px solid #eee;
+      }
     </style>
 
     <!-- Compiled and minified CSS -->
@@ -38,14 +43,14 @@
   <div class="section no-pad-bot" id="index-banner">
     <div class="container">
       <div id="MainView"> 
-        <input type="text" id="agent" name="agent" placeholder="Agent Goal..." value="Build a list of the 5 most fancy restaurant in every city with more that 1 million habitant in the USA">
+        <input type="text" id="agent" name="agent" placeholder="Agent Goal..." value="For each country of the world identify their main legislation and where it can be access online (url). If the country have a federal organization, also identify each of the regulation of each state like administration.">
         <button id="btn" class="btn-large waves-effect waves-light" onclick="start()">Start</button>
       </div>
     
       <div id="FlowView"> 
-        <ul id="flowContent" class="collection">
+        <div id="flowContent">
     
-        </ul>
+        </div>
       </div>
     </div>
 
@@ -75,6 +80,9 @@
       });
 
       let data = await res.json();
+
+      // add hashbang to urkl
+      window.location.hash = data.agentID;
       renderFlow(data.agentID);
     }
 
@@ -83,6 +91,7 @@
       if (id) {
         agentID = id;
       }
+      let refresh = true;
       MainView.style.display = 'none';
       FlowView.style.display = 'block';
       
@@ -92,8 +101,12 @@
       let flowContent = document.getElementById('flowContent');
       flowContent.innerHTML = '';
 
+      let taskList = {
+
+      }
+
       for (let item of data) {
-        let div = document.createElement('li');
+        let div = document.createElement('div');
         div.className = 'collection-item';
 
         div.innerHTML = `
@@ -122,15 +135,56 @@
             <div class='result'>${item.result}</div>
           `
         }
+        else if (item.type === 'ASK_CLARIFICATION') {
+          div.innerHTML += `
+            <div>${item.args}</div>
+          `
+          if (!item.parentTaskId && item == data[data.length - 1]) {
+            div.innerHTML += `
+            <input type='text' id='answer'>
+            <input type='button' value='Send' onclick="answer('${item.taskId}')">
+            `
+            refresh = false;
+          }
+        }
         else {
           div.innerHTML += `
             <div class='JSON'><pre>${JSON.stringify(item, null, 2)}</pre></div>
           `
         }
+        if (item.type == "NEW_TASK") {
+          taskList[item.taskId] = div;
+          div.className = 'task';
+
+          if (item.parentTaskId) {
+            taskList[item.parentTaskId].appendChild(div);
+          }
+          else {
+            flowContent.appendChild(div);
+          }
+        }
+        else {
+          taskList[item.taskId].appendChild(div);
+        }
         
-        flowContent.appendChild(div);
       }
-      setTimeout(renderFlow, 1000);
+      if (refresh) {
+        setTimeout(renderFlow, 1000);
+      }
+    
+    }
+
+    async function answer(taskId) {
+      let answer = document.getElementById('answer').value;
+
+      await fetch(`/api/agent/${agentID}/${taskId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({answer : answer})
+      });
+      renderFlow(agentID);
     }
   </script>
 

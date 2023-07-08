@@ -34,6 +34,6 @@ const search = {
 module.exports = {
   do: search.do,
   configure: search.configure,
-  instruction : "::SEARCH <query> the internet for a given query and return a list of website",
+  instruction : "SEARCH <query> the internet for a given query and return a list of website",
   keyword: "SEARCH"
 }
