@@ -1,3 +1,4 @@
 {
-  "\"WHO": "Data Collections - Laws and Policies Analytics\" as legislation_database_url"
+  "file_format": "csv",
+  "countries": "[object Object]"
 }
