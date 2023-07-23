@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Agent Demo</title>
+    <title>lawgentDemo</title>
     
     <style>
       #MainView {
@@ -16,6 +16,13 @@
         padding: 8px;
         border : 1px solid #eee;
       }
+
+      .collection-item {
+        padding: 8px;
+        border : 1px solid #eee;
+      }
+
+      pre {word-wrap: break-word;}
     </style>
 
     <!-- Compiled and minified CSS -->
@@ -23,33 +30,35 @@
 
     <!-- Compiled and minified JavaScript -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
-            
+
+    <script src="https://unpkg.com/dropzone@6.0.0-beta.1/dist/dropzone-min.js"></script>
+    <link href="https://unpkg.com/dropzone@6.0.0-beta.1/dist/dropzone.css" rel="stylesheet" type="text/css" />
+      
 </head>
 <body>
   <nav class="blue-grey darken-4" role="navigation">
-    <div class="nav-wrapper container"><a id="logo-container" href="#" class="brand-logo">Presonal Agent</a>
-      <!-- <ul class="right hide-on-med-and-down">
-        <li><a href="#">Navbar Link</a></li>
-      </ul>
+    <a id="logo-container" href="#" class="brand-logo">Agent Debuger</a>
 
-      <ul id="nav-mobile" class="sidenav">
-        <li><a href="#">Navbar Link</a></li>
-      </ul>
-    -->
-      <a href="#" data-target="nav-mobile" class="sidenav-trigger"><i class="material-icons">menu</i></a>
+    <div class="nav-wrapper container">
+      
+      <div id="htmlOutput"></div>
     </div>
   </nav>
 
   <div class="section no-pad-bot" id="index-banner">
     <div class="container">
       <div id="MainView"> 
-        <input type="text" id="agent" name="agent" placeholder="Agent Goal..." value="For each country of the world identify their main legislation and where it can be access online (url). If the country have a federal organization, also identify each of the regulation of each state like administration.">
-        <button id="btn" class="btn-large waves-effect waves-light" onclick="start()">Start</button>
+        <p>MMA agreement helper</p>
+        <div>
+          <form action="/api/fileUpload"
+          class="dropzone"
+          id="my-awesome-dropzone"></form>
+        </div>
       </div>
     
       <div id="FlowView"> 
         <div id="flowContent">
-    
+          
         </div>
       </div>
     </div>
@@ -64,8 +73,12 @@
     if (hash.length) {
       renderFlow(hash);
     }
-    
+
     async function start() {
+      
+    }
+
+    async function startOle() {
       MainView.style.display = 'none';
 
       let agent = document.getElementById('agent').value;
@@ -118,6 +131,12 @@
             <div class='goal'>${item.goal}</div>
           `
         }
+        if (item.type === 'REWRITE') {
+          htmlOutput.innerHTML = `<a href="/${window.hash}.html" target="_blank">html output</a>`;
+          div.innerHTML += `
+            <div class='goal'>${item.rewrite.data}</div>
+          `
+        }
         else if (item.type === 'REASONING') {
           div.innerHTML += `
             <pre class='reasoning'>${item.answer.replace(/::/g, "Do ")}</pre>
@@ -133,6 +152,13 @@
           div.innerHTML += `
             <pre class='url'>${item.query}</pre>
             <div class='result'>${item.result}</div>
+          `
+        }
+        else if (item.type === 'CLASSIFY') {
+          div.innerHTML += `
+            <div class='result'><b>${item.result}</b></div>
+            <pre class='query'>${item.clause}</pre>
+            
           `
         }
         else if (item.type === 'ASK_CLARIFICATION') {
@@ -164,6 +190,13 @@
           }
         }
         else {
+          if (!taskList[item.taskId]) {
+            let ndiv = document.createElement('div');
+            ndiv.className = 'task';
+
+            taskList[item.taskId] = ndiv;
+            flowContent.appendChild(ndiv);
+          }
           taskList[item.taskId].appendChild(div);
         }
         
@@ -188,10 +221,35 @@
     }
   </script>
 
-  <!--JavaScript at end of body for optimized loading-->
+  <!--JavaScript at end of body for optimized loading
   <script type="text/javascript" src="js/materialize.min.js"></script>
+-->
+  <script>
+    let myDropzone = new Dropzone("#my-awesome-dropzone", { /* options */ });
+    myDropzone.on("success", async file => {
+      console.log("A file has been added");
+      console.log(file);
+      id = file.xhr.response;
+      
+      // FETCH POST '/api/agent'
+      let res = await fetch('/api/agent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({goal: id})
+      });
 
+      let data = await res.json();
 
+      // add hashbang to urkl
+      window.location.hash = data.agentID;
+      renderFlow(data.agentID);
+      setTimeout(function() {
+        window.location.reload();
+      }, 1000);
+    });
+  </script>
 </body>
 
 </html>

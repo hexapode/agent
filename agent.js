@@ -2,7 +2,6 @@
 
 const fs = require('fs');
 
-const { Configuration, OpenAIApi } = require("openai");
 
 const search = require('./tools/googleSearch');
 search.configure(process.env.GOOLE_API_KEY, "3359060177f7e45c6");
@@ -10,27 +9,22 @@ search.configure(process.env.GOOLE_API_KEY, "3359060177f7e45c6");
 const browse = require('./tools/browse');
 const { AsyncResource } = require('async_hooks');
 
+const store = require('./tools/store');
+
+
+const { Configuration, OpenAIApi } = require("openai");
 
 const configuration = new Configuration({
   apiKey: process.env.OPEN_AI_KEY,
 });
+
+
 const openai = new OpenAIApi(configuration);
 
-const logStack = [];
-async function logIt(data, id) { 
-  if (!id) {
-    debugger;
-  }
-  logStack.push(data);
-  fs.writeFileSync(`${__dirname}/public/trace/log-${id}.json`, JSON.stringify(logStack, null, 2));
-}
+const logIt = require('./logIt.js');
 
+let ID = 100
 
-let ID = 0
-
-let STORE = {
-
-}
 
 let MESSAGES = {
   
@@ -61,7 +55,7 @@ let retrieveFromUrl = {
 
 let mainTools = [search]
 
-let defaultTools = [search, retrieveFromUrl]
+let defaultTools = []// [search, retrieveFromUrl];
 
 async function agent(goal, agentId, parentTaskId=null, tools=defaultTools) {
   let taskId = ++ID;
@@ -77,6 +71,9 @@ async function agent(goal, agentId, parentTaskId=null, tools=defaultTools) {
   return think(taskId, goal, agentId, tools, parentTaskId);
 
 }
+
+
+
 
 async function agentContinue(answer, agentId, taskId) {
 
@@ -104,12 +101,8 @@ for (let tool of tools) {
 systemPrompt += 
 `
 PLAN <task> Plan to do a task in the future
-ASK <task>  ask yourself to do a subtask and get the return value. The task should be a string with all information necessary to complete it, do not include references to context explicit it.
 END_RESULT <result>  output the result of the task once it is successfully completed. result should be an output of the result of the task
-ASK_CLARIFICATION <question> ask for context if the task is not clear or missing some context
-CLARIFY <taskId> <answer> provide some context to a clarification request
-STORE <key> <value> store a value in memory
-RETRIEVE <key> retrieve a value from memory
+
 
 
 Parameter do not need to be quoted, even if they contain spaces. parameters do not support new lines
@@ -123,16 +116,7 @@ Once a task is complete it is good to check if the task was completed successful
 If the task was not completed successfully it is good to try to determine why it was not completed successfully and to retry it.
 
 You can only output one instruction. do not output multiple instructions.
-
-when the task is successfull output the result as csv, unless prompted otherwise.
-
-You have limited attention, try to create subtask to do the task and do them one by one instead of trying to do the whole task at once.
-
-You have limited memory, try to store information in memory to use it later, or to retrieve by other instead of communicating it directly.
-
-If the task is too big, use ASK to split it in subtask and do them one by one.
-If you think the task miss context information, you can output ASK_CLARIFICATION missing context to do task <details> and the user will give you more information.`;
-
+`;
 
   // we backup the prompt
   if (!MESSAGES[taskId]) {
@@ -177,19 +161,6 @@ If you think the task miss context information, you can output ASK_CLARIFICATION
           }
         }
 
-        if (instruction === 'STORE') {
-          console.log(`STORE ${args} in memory`)
-          let key = args.split(' ')[0];
-          let value = args.split(' ').slice(1).join(' ');
-          STORE[key] = value;
-          logIt({ 
-            type: "STORE",
-            taskId: taskId,
-            key: key,
-            value: value
-          }, agentId);
-          fs.writeFileSync('store.json', JSON.stringify(STORE, null, 2));
-        }
         if (instruction === 'RETRIEVE') { 
           console.log(`RETRIEVE ${args} from memory`)
           let key = args.split(' ')[0];
@@ -220,6 +191,7 @@ If you think the task miss context information, you can output ASK_CLARIFICATION
         }
      
         if (instruction === 'END_RESULT') {
+          args = answer.substring(answer.indexOf('END_RESULT') + 'END_RESULT'.length);
           logIt({ 
             type: "END_RESULT",
             taskId: taskId,
