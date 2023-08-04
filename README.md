@@ -12,3 +12,11 @@ An agent / framework to build agent supporting custom tool in JS. Include :
 ## Setup
 1. change the `example.env` to `.env` and add your API keys
 2. run `npm install`
+3. from root directory run `node index.js`
+4. send a goal to `POST /api/agent`
+```
+# body
+{
+  goal:""
+}
+```
