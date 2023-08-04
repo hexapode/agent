@@ -7,4 +7,8 @@ An agent / framework to build agent supporting custom tool in JS. Include :
 - Some tool for web browsing (based on zen Browser), and Google search (using google custom search engine API)
 - Ability for the agent to plan task
 - Ability for the agent to store data to a key value / store or a file
-- Ability for the agent to fork itself and interact as the human with the fork agent. Allowing to tackle more complexe task
+- Ability for the agent to fork itself and interact as the human with the fork agent. Allowing to tackle more complex task
+
+## Setup
+1. change the `example.env` to `.env` and add your API keys
+2. run `npm install`
